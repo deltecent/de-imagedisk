@@ -29,10 +29,9 @@ Requires CMake 3.16+ and a C++17 compiler (Apple clang or GCC).
 so they run on any distribution.
 
 Prebuilt binaries are on the GitHub releases page: Linux x86_64 and arm64 (static), and a
-macOS universal build (arm64 + x86_64, macOS 11 or later). The macOS binaries are signed
-with a Developer ID and notarized by Apple, so Gatekeeper lets them run after a browser
-download. Bare executables can't carry a stapled ticket, so the first run needs network
-access for Gatekeeper's online check.
+macOS universal build (arm64 + x86_64, macOS 11 or later). The macOS binaries aren't
+notarized yet, so after downloading with a browser, clear the quarantine flag with
+`xattr -d com.apple.quarantine imdu bin2imd td02imd`.
 
 ### Making a release
 
@@ -54,8 +53,9 @@ repository secrets:
 | `APPLE_API_KEY_ID` | that key's ID |
 | `APPLE_API_ISSUER_ID` | the issuer ID shown on the App Store Connect keys page |
 
-A tagged release fails without them. A manual run falls back to an ad-hoc signature and
-prints a warning.
+Without them, the tools get an ad-hoc signature and the build prints a warning. Once the
+secrets are added, every build signs with the Developer ID and notarizes, with no
+workflow changes.
 
 The workflow can also be run by hand (Actions → Release → Run workflow). This builds the
 archives as workflow artifacts without making a release.

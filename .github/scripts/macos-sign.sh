@@ -3,8 +3,8 @@
 #
 # With the Developer ID secrets set, the tools are signed with the hardened
 # runtime and a secure timestamp, then submitted to Apple's notary service.
-# Without them, the tools get an ad-hoc signature; that is refused for tagged
-# release builds so an unsigned release can't be published by accident.
+# Without them, the tools get an ad-hoc signature, and users have to clear the
+# quarantine flag after downloading.
 #
 #   MACOS_CERTIFICATE_P12       base64 of the exported Developer ID Application .p12
 #   MACOS_CERTIFICATE_PASSWORD  password of that .p12
@@ -15,14 +15,8 @@ set -eu
 
 dir=$1
 tools="$dir/imdu $dir/bin2imd $dir/td02imd"
-release=false
-[ "${GITHUB_REF_TYPE:-}" = tag ] && release=true
 
 missing() {
-    if $release; then
-        echo "::error::$1 is not set; release binaries must be signed and notarized"
-        exit 1
-    fi
     echo "::warning::$1 is not set; $2"
 }
 
