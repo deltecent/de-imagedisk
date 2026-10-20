@@ -77,6 +77,36 @@ def parse_imd(data):
     return comment, tracks
 
 
+def build_imd(comment, tracks):
+    """Independent IMD writer. Track: (mode, cyl, head, size, smap, sectors[, cmap, hmap]);
+    sector: (type, fill-or-bytes)."""
+    out = bytearray(comment) + b"\x1a"
+    for t in tracks:
+        mode, cyl, head, size, smap, sectors = t[:6]
+        cmap = t[6] if len(t) > 6 else None
+        hmap = t[7] if len(t) > 7 else None
+        flags = (0x80 if cmap else 0) | (0x40 if hmap else 0)
+        out += bytes([mode, cyl, head | flags, len(smap), size]) + bytes(smap)
+        if cmap:
+            out += bytes(cmap)
+        if hmap:
+            out += bytes(hmap)
+        for typ, val in sectors:
+            out.append(typ)
+            if typ == 0:
+                continue
+            if (typ - 1) & 1:
+                out.append(val)
+            else:
+                check(len(val) == 128 << size)
+                out += val
+    return bytes(out)
+
+
+def sector_bytes(tag, size=0):
+    return bytes((tag + i) & 0xFF for i in range(128 << size))
+
+
 def make_bin(path, size, seed=1):
     rnd = random.Random(seed)
     data = bytearray(rnd.getrandbits(8) for _ in range(size))
@@ -257,6 +287,141 @@ def imdu_detail():
     write("bad.imd", b"comment only")
     _, err = run("imdu", "bad.imd", expect=1)
     check("EOF in comment" in err, err)
+
+
+@test
+def imdu_merge():
+    full = lambda c, h, ids: [(1, sector_bytes(c * 16 + h * 8 + i)) for i in ids]
+    a = build_imd(b"A\r\n", [
+        (2, 0, 0, 0, [1, 2, 3], full(0, 0, [1, 2, 3])),
+        (2, 1, 0, 0, [1, 2, 3], full(1, 0, [1, 2]) + [(0, None)]),
+    ])
+    b = build_imd(b"B\r\n", [
+        (2, 0, 0, 0, [1, 2, 3], full(0, 0, [1, 2]) + [(1, sector_bytes(99))]),
+        (2, 0, 1, 0, [1, 2], full(0, 1, [1, 2])),
+        (2, 1, 0, 0, [3, 1, 2, 10], full(1, 0, [3, 1, 2, 10])),
+        (2, 2, 0, 0, [1], full(2, 0, [1])),
+    ])
+    write("a.imd", a)
+    write("b.imd", b)
+    out, _ = run("imdu", "a.imd", "b.imd", "m.imd", "/Y")
+    for msg in [" 0/0 Merge data differs from original 2 2",
+                " 1/0 Adding track 0/1 from mergefile",
+                "     Filling in sector 2/3",
+                "     Adding sector 3/10",
+                "Adding track 2/0 from mergefile",
+                "4 tracks(3/1), 10 sectors"]:
+        check(msg in out, f"{msg!r} not in:\n{out}")
+    comment, tracks = parse_imd(read("m.imd"))
+    check(comment == b"A\r\n")
+    check([(t["cyl"], t["head"]) for t in tracks] == [(0, 0), (0, 1), (1, 0), (2, 0)])
+    t = tracks[2]
+    check(t["smap"] == [1, 2, 3, 10])
+    check([d for _, d in t["sectors"]] == [sector_bytes(16 + i) for i in (1, 2, 3, 10)])
+    check(tracks[0]["sectors"][2][1] == sector_bytes(3), "input data kept")
+
+    out, _ = run("imdu", "a.imd", "b.imd")
+    check("No output file - compare only." in out and "Filling in sector 2/3" in out, out)
+    out, _ = run("imdu", "a.imd", "b.imd", "/Q")
+    check("Filling" not in out and "compare only" not in out, out)
+
+    # Mode mismatch is reported unless /M is given.
+    write("c.imd", build_imd(b"C\r\n", [(5, 0, 0, 0, [1, 2, 3], full(0, 0, [1, 2, 3]))]))
+    out, _ = run("imdu", "a.imd", "c.imd")
+    check(" 0/0 Incompatible track mode" in out and "Track not found in merge file" in out, out)
+    out, _ = run("imdu", "a.imd", "c.imd", "/M")
+    check("Incompatible" not in out, out)
+
+
+@test
+def imdu_merge_identity():
+    make_imd()
+    out, _ = run("imdu", "x.imd", "x.imd", "y.imd", "/Y")
+    check(read("x.imd") == read("y.imd"))
+    for real in REAL_IMAGES:
+        if os.path.exists(real):
+            run("imdu", real, real, "r.imd", "/Y")
+            check(read(real) == read("r.imd"), real)
+
+
+def interleave_image():
+    smap = [1, 4, 7, 2, 5, 8, 3, 6, 9]
+    write("i.imd", build_imd(b"I\r\n", [(5, 0, 0, 0, smap, [(1, sector_bytes(i)) for i in smap])]))
+
+
+@test
+def imdu_interleave():
+    interleave_image()
+    run("imdu", "i.imd", "g.imd", "IL=", "/Y")
+    check(read("g.imd") == read("i.imd"), "best guess keeps 3:1")
+    run("imdu", "i.imd", "o.imd", "IL=1", "/Y")
+    t = parse_imd(read("o.imd"))[1][0]
+    check(t["smap"] == list(range(1, 10)) and t["sectors"][4][1] == sector_bytes(5))
+    run("imdu", "i.imd", "t.imd", "il=2", "/Y")
+    t = parse_imd(read("t.imd"))[1][0]
+    check(t["smap"] == [1, 6, 2, 7, 3, 8, 4, 9, 5], t["smap"])
+    check([d for _, d in t["sectors"]] == [sector_bytes(i) for i in t["smap"]])
+    out, _ = run("imdu", "i.imd", "b", "/B", "/Y")
+    check("Assuming 1:1 for Binary output" in out, out)
+    check(read("b.bin") == b"".join(sector_bytes(i) for i in range(1, 10)))
+    run("imdu", "i.imd", "b2", "/B", "IL=3", "/Y")
+    check(read("b2.bin") == b"".join(sector_bytes(i) for i in [1, 4, 7, 2, 5, 8, 3, 6, 9]))
+    _, err = run("imdu", "i.imd", "o.imd", "IL=100", "/Y", expect=1)
+    check("Value (100) out of range: 1-99" in err, err)
+
+
+@test
+def imdu_translate_exclude_fill():
+    tracks = []
+    for c in range(5):
+        for h in (0, 1):
+            tracks.append((2 if c == 0 else 5, c, h, 0, [1, 2],
+                           [(1, sector_bytes(c)), (0, None) if c == 4 else (3, sector_bytes(9))]))
+    write("t.imd", build_imd(b"T\r\n", tracks))
+    run("imdu", "t.imd", "o.imd", "T2=500", "X=1", "X0=2", "X1=3,3", "/Y")
+    _, out = parse_imd(read("o.imd"))
+    check([(t["cyl"], t["head"]) for t in out] == [(0, 0), (0, 1), (2, 1), (3, 0), (4, 0), (4, 1)])
+    check(out[0]["mode"] == 0 and out[2]["mode"] == 3, [t["mode"] for t in out])
+    check(out[0]["sectors"][1][0] == 3, "deleted mark kept by default")
+    check(out[4]["sectors"][1] == (0, None))
+    run("imdu", "t.imd", "f.imd", "F=e5", "/ND", "/Y")
+    _, out = parse_imd(read("f.imd"))
+    check(out[0]["sectors"][1][0] == 1, "/ND drops deleted mark")
+    check(out[8]["sectors"][1] == (1, bytes([0xE5]) * 128))
+    run("imdu", "t.imd", "fc.imd", "F=0", "/C", "/Y")
+    _, out = parse_imd(read("fc.imd"))
+    check(out[8]["sectors"][1] == (2, bytes(128)))
+    run("imdu", "t.imd", "t5.imd", "T5=250", "T3=500", "/Y")
+    check(read("t5.imd") == read("t.imd"))
+    _, err = run("imdu", "t.imd", "o.imd", "X=1,2,3", "/Y", expect=1)
+    check("Syntax error" in err, err)
+    _, err = run("imdu", "t.imd", "o.imd", "F=1G", "/Y", expect=1)
+    check("Bad number" in err, err)
+    out, _ = run("imdu", "t.imd", "o.imd", "T2=123", "/Y", expect=1)
+    check("Use: imdu" in out)
+
+
+@test
+def imdu_json():
+    import json
+    tracks = [(5, 0, 0, 1, [1, 2, 3], [(2, 0xE5), (0, None), (8, 0x11)]),
+              (5, 0, 1, 1, [1], [(3, sector_bytes(1, 1))], [7], [0])]
+    write("j.imd", build_imd(b"Hi \"there\"\r\n", tracks))
+    out, err = run("imdu", "j.imd", "--json")
+    doc = json.loads(out)
+    check(doc["comment"] == 'Hi "there"\r\n', doc["comment"])
+    t0, t1 = doc["tracks"]
+    check(t0["mode"] == 5 and t0["rate_kbps"] == 250 and t0["encoding"] == "MFM" and t0["sector_size"] == 256)
+    check(t0["sectors"][0] == {"id": 1, "cylinder": 0, "head": 0, "available": True, "compressed": True,
+                               "deleted": False, "bad": False, "fill": 229}, t0["sectors"][0])
+    check(t0["sectors"][1]["available"] is False)
+    check(t0["sectors"][2]["deleted"] and t0["sectors"][2]["bad"])
+    check(t1["cylinder_map"] and t1["sectors"][0]["cylinder"] == 7)
+    check(doc["totals"] == {"tracks": 2, "head0_tracks": 1, "head1_tracks": 1, "sectors": 4,
+                            "compressed": 2, "deleted": 2, "bad": 1, "unavailable": 1}, doc["totals"])
+
+
+REAL_IMAGES = [os.path.expanduser("~/Downloads/CDOSMBD.IMD"), os.path.expanduser("~/Downloads/CPM80-22.IMD")]
 
 
 def main():
