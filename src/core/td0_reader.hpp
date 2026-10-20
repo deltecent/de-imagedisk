@@ -82,6 +82,7 @@ struct Td0Comment {
 struct Td0Sector {
     uint8_t cyl = 0, head = 0, id = 0, sizeCode = 0, flags = 0, crc = 0;
     bool hasData = false;          // a data block followed the header
+    uint16_t dataLength = 0;       // data block length (method byte + encoded data)
     uint8_t method = 0;            // data encoding method, when hasData
     std::vector<uint8_t> data;     // decoded data (sector size), empty when no data block
 };

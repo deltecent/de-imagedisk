@@ -10,6 +10,9 @@ import subprocess
 import sys
 import tempfile
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import td0gen  # noqa: E402
+
 BIN = None
 TESTS = {}
 
@@ -419,6 +422,186 @@ def imdu_json():
     check(t1["cylinder_map"] and t1["sectors"][0]["cylinder"] == 7)
     check(doc["totals"] == {"tracks": 2, "head0_tracks": 1, "head1_tracks": 1, "sectors": 4,
                             "compressed": 2, "deleted": 2, "bad": 1, "unavailable": 1}, doc["totals"])
+
+
+# ---------------------------------------------------------------- td02imd
+
+def sec(cyl, head, sid, data=None, size=2, flags=0, method=0):
+    return dict(cyl=cyl, head=head, id=sid, size=size, flags=flags, method=method, data=data)
+
+
+def pattern_data(tag, size=512):
+    """Data that exercises each encoding method: tag%3 selects raw / 2-byte pattern / RLE."""
+    kind = tag % 3
+    if kind == 0:
+        return bytes((tag * 7 + i * 13) & 0xFF for i in range(size)), 0
+    if kind == 1:
+        return bytes([tag & 0xFF, 0x5A]) * (size // 2), 1
+    half = bytes([tag & 0xFF]) * (size // 2)
+    tail = bytes((i * 3) & 0xFF for i in range(size // 4)) + bytes([1, 2, 3, 4]) * (size // 16)
+    return half + tail, 2
+
+
+def sample_tracks(cyls=3, nsec=9):
+    tracks, expected = [], []
+    for c in range(cyls):
+        for h in (0, 1):
+            secs, data = [], []
+            for i in range(nsec):
+                tag = c * 31 + h * 17 + i
+                d, m = pattern_data(tag)
+                secs.append(sec(c, h, i + 1, d, method=m))
+                data.append(d)
+            tracks.append((c, h, secs))
+            expected.append(data)
+    return tracks, expected
+
+
+def check_converted(tracks_out, expected, mode):
+    check(len(tracks_out) == len(expected), len(tracks_out))
+    for t, data in zip(tracks_out, expected):
+        check(t["mode"] == mode, t["mode"])
+        check([d for _, d in t["sectors"]] == data, f"data mismatch on {t['cyl']}/{t['head']}")
+
+
+@test
+def td02imd_basic():
+    tracks, expected = sample_tracks()
+    td0, _ = td0gen.build_td0(tracks, rate=2, comment=b"Line one\0Line two\0\0", drive=4)
+    write("disk.td0", td0)
+    out, _ = run("td02imd", "disk")
+    check(out.splitlines()[:4] == ["TD 1.5 3.5 HD MFM S-step, 2 sides 1/05/2007 12:34:56",
+                                   "Line one", "Line two", "6 tracks, 54 sectors converted."],
+          out.splitlines()[:4])
+    check("6 tracks, 54 sectors converted." in out, out)
+    comment, conv = parse_imd(read("disk.imd"))
+    check(comment == b"IMD TD 1.5 3.5 HD MFM S-step, 2 sides 1/05/2007 12:34:56\r\nLine one\r\nLine two\r\n",
+          comment)
+    check_converted(conv, expected, 3)
+    check(all(t["flags"] == 0 and t["smap"] == list(range(1, 10)) for t in conv))
+    # All-same sectors are written compressed.
+    write("same.td0", td0gen.build_td0([(0, 0, [sec(0, 0, 1, bytes(512), method=0)])])[0])
+    run("td02imd", "same.td0", "O=same_out", "/Q")
+    check(parse_imd(read("same_out.imd"))[1][0]["sectors"][0][0] == 2)
+
+
+@test
+def td02imd_advanced_compression():
+    tracks, expected = sample_tracks(cyls=8)
+    write("p.td0", td0gen.build_td0(tracks, rate=0, comment=b"Advanced test\0")[0])
+    write("a.td0", td0gen.build_td0(tracks, rate=0, comment=b"Advanced test\0", advanced=True)[0])
+    check(read("a.td0")[:2] == b"td" and len(read("a.td0")) < len(read("p.td0")))
+    out, _ = run("td02imd", "a.td0")
+    check(" ADV" in out, out)
+    ca, ta = parse_imd(read("a.imd"))
+    run("td02imd", "p.td0")
+    cp, tp = parse_imd(read("p.imd"))
+    check(ta == tp)
+    check(ca.replace(b" ADV", b"") == cp, (ca, cp))
+    check_converted(ta, expected, 5)
+    # The binary export matches too.
+    run("imdu", "a.imd", "a", "/B", "/Y")
+    check(read("a.bin") == b"".join(d for t in expected for d in t))
+
+
+@test
+def td02imd_flags_and_warnings():
+    d1, _ = pattern_data(0)
+    secs = [sec(0, 0, 1, d1), sec(0, 0, 2, flags=0x10), sec(0, 0, 3, flags=0x20),
+            sec(0, 0, 4, d1, flags=0x02), sec(0, 0, 5, d1, flags=0x02), sec(0, 0, 6, d1, flags=0x04),
+            sec(0, 0, 7, d1, flags=0x44), sec(0, 0, 7, bytes([9]) * 512, flags=0x01),
+            sec(0, 0, 9, d1, flags=0x06)]
+    td0, _ = td0gen.build_td0([(0, 0, secs), (1, 0, [sec(1, 0, 1, flags=0x02 | 0x10)])])
+    write("f.td0", td0)
+    out, _ = run("td02imd", "f.td0")
+    for msg in ["00/0: No DATA field", "00/0: CRC error (bad sector)", "00/0: No ID field - possible bogus sector",
+                "00/0: Duplicate sector numbers", "01/0: CRC error (bad sector)",
+                "2 tracks, 10 sectors converted."]:
+        check(msg in out, f"{msg!r} not in {out}")
+    check(out.count("CRC error") == 2, out)
+    _, conv = parse_imd(read("f.imd"))
+    types = [t for t, _ in conv[0]["sectors"]]
+    check(types == [1, 2, 0, 5, 5, 3, 3, 2, 7], types)
+    check(conv[0]["sectors"][1][1] == bytes([0xE5]) * 512)
+    check(conv[1]["sectors"][0] == (6, bytes([0xE5]) * 512))
+
+    out, _ = run("td02imd", "f.td0", "W=CdHIN")
+    check("00/0" not in out and "01/0" not in out, out)
+    out, _ = run("td02imd", "f.td0", "F=CN", "M=6", "/RF", "W=CDHIN")
+    check("2 tracks, 10 sectors converted, 7 sectors removed." in out, out)
+    _, conv = parse_imd(read("f.imd"))
+    check(len(conv) == 1 and conv[0]["smap"] == [1, 2, 6], conv[0]["smap"])
+    run("td02imd", "f.td0", "/RL", "/Q")
+    _, conv = parse_imd(read("f.imd"))
+    check(conv[0]["smap"] == [1, 2, 3, 4, 5, 6, 7, 9])
+    check(conv[0]["sectors"][6] == (2, bytes([9]) * 512), "last duplicate kept")
+    run("td02imd", "f.td0", "/RF", "/Q")
+    _, conv = parse_imd(read("f.imd"))
+    check(conv[0]["sectors"][6] == (3, d1), "first duplicate kept")
+    # Keep-last stays correct when an earlier sector was removed.
+    run("td02imd", "f.td0", "/RL", "F=N", "/Q")
+    _, conv = parse_imd(read("f.imd"))
+    check(conv[0]["smap"] == [1, 2, 4, 5, 6, 7, 9] and conv[0]["sectors"][5] == (2, bytes([9]) * 512))
+
+
+@test
+def td02imd_modes_and_maps():
+    d, _ = pattern_data(0, 128)
+    one = lambda c, h, **kw: [(c, h, [sec(c, h, 1, d, size=0, **kw)])]
+    cases = [
+        (dict(rate=2), [], 3),
+        (dict(rate=1), [], 5),
+        (dict(rate=1), ["/L"], 4),
+        (dict(rate=0x80), [], 2),
+        (dict(rate=0x80), ["/F"], 5),
+        (dict(rate=0x82), [], 0),
+    ]
+    for kw, opts, mode in cases:
+        write("m.td0", td0gen.build_td0(one(0, 0), **kw)[0])
+        run("td02imd", "m.td0", "/Q", *opts)
+        got = parse_imd(read("m.imd"))[1][0]["mode"]
+        check(got == mode, f"{kw} {opts}: mode {got}, expected {mode}")
+    write("m.td0", td0gen.build_td0([(0, 0x80, [sec(0, 0, 1, d, size=0)])], rate=2)[0])
+    run("td02imd", "m.td0", "/Q")
+    check(parse_imd(read("m.imd"))[1][0]["mode"] == 0, "track FM bit")
+
+    write("c.td0", td0gen.build_td0([(5, 1, [sec(5, 1, 1, d, size=0), sec(7, 0, 2, d, size=0)])])[0])
+    run("td02imd", "c.td0", "/Q")
+    t = parse_imd(read("c.imd"))[1][0]
+    check(t["flags"] == 0xC0 and t["cmap"] == [5, 7] and t["hmap"] == [1, 0], t)
+
+    # No end marker: the end of the file ends the image.
+    write("n.td0", td0gen.build_td0(one(0, 0), terminate=False)[0])
+    out, _ = run("td02imd", "n.td0")
+    check("1 tracks, 1 sectors converted." in out, out)
+
+
+@test
+def td02imd_errors():
+    d, _ = pattern_data(0)
+    good, _ = td0gen.build_td0([(0, 0, [sec(0, 0, 1, d)])])
+
+    def expect(data, msg, *opts):
+        write("e.td0", data)
+        _, err = run("td02imd", "e.td0", *opts, expect=1)
+        check(msg in err, f"{msg!r} not in {err!r}")
+
+    bad = bytearray(good); bad[10] ^= 1
+    expect(bytes(bad), "Header CRC failure")
+    expect(b"XX" + good[2:], "No TD signature")
+    bad = bytearray(good); bad[15] ^= 1
+    expect(bytes(bad), "Track header CRC error")
+    expect(td0gen.build_td0([(0, 0, [sec(0, 0, 1, d), sec(0, 0, 2, d[:256], size=1)])])[0],
+           "Cannot do mixed sector size within track")
+    bad = bytearray(good); bad[22] += 1
+    expect(bytes(bad), "Sector data size/offset mismatch")
+    bad = bytearray(good); bad[24] = 7
+    expect(bytes(bad), "Unknown data mode: 07")
+    expect(good[:30], "EOF reading sector data")
+    expect(td0gen.build_td0([(0, 0, [sec(0, 0, 1, d)])], rate=3)[0], "Unknown data rate")
+    expect(td0gen.build_td0([(0, 0, [sec(0, 0, 1, d)])], comment=b"x")[0][:20] + b"\0" * 4, "Comment CRC error!")
+    out, _ = run("td02imd", expect=1)
+    check("Use:    td02imd" in out, out)
 
 
 REAL_IMAGES = [os.path.expanduser("~/Downloads/CDOSMBD.IMD"), os.path.expanduser("~/Downloads/CPM80-22.IMD")]

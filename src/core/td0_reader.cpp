@@ -356,6 +356,7 @@ void Td0Reader::readSector(Td0Sector& s)
 
     unsigned length = need("data header");
     length |= static_cast<unsigned>(need("data header")) << 8;
+    s.dataLength = static_cast<uint16_t>(length);
     s.method = need("data header");
     s.hasData = true;
     size_t start = stream_->count();
