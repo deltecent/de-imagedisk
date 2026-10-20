@@ -1,0 +1,10 @@
+# Generate an LZHUF-compressed stream with td0gen.py and check that the decoder reproduces it.
+file(MAKE_DIRECTORY ${DIR})
+execute_process(COMMAND ${PYTHON} ${GEN} stream ${DIR}/s.td0 ${DIR}/s.raw ${SEED} RESULT_VARIABLE r)
+if(r)
+  message(FATAL_ERROR "td0gen.py failed: ${r}")
+endif()
+execute_process(COMMAND ${CHECK} ${DIR}/s.td0 ${DIR}/s.raw RESULT_VARIABLE r)
+if(r)
+  message(FATAL_ERROR "decoded stream does not match")
+endif()
