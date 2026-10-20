@@ -135,11 +135,11 @@ static void testImageErrors()
     auto expectError = [&](std::vector<uint8_t> b, const std::string& msg) {
         try {
             imd::parseImage(b);
-            CHECK(!"no error");
+            CHECK(false && "no error");
         } catch (const imd::FormatError& e) {
             if (std::string(e.what()).find(msg) == std::string::npos) {
                 std::fprintf(stderr, "unexpected error: %s\n", e.what());
-                CHECK(!"wrong message");
+                CHECK(false && "wrong message");
             }
         }
     };

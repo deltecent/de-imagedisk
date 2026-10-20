@@ -283,7 +283,7 @@ Td0Reader::Td0Reader(std::vector<uint8_t> file) : file_(std::move(file))
         for (auto& b : block)
             b = need("comment header");
         uint16_t crc = static_cast<uint16_t>(block[0] | (block[1] << 8));
-        unsigned len = block[2] | (block[3] << 8);
+        unsigned len = block[2] | (static_cast<unsigned>(block[3]) << 8);
         comment_.year = block[4];
         comment_.month = block[5];
         comment_.day = block[6];

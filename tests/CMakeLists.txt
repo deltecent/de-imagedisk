@@ -24,6 +24,7 @@ if(Python3_Interpreter_FOUND)
   foreach(name ${tool_test_names})
     add_test(NAME ${name}
              COMMAND ${Python3_EXECUTABLE} ${tool_tests} $<TARGET_FILE_DIR:imdu> ${name})
+    set_tests_properties(${name} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
   endforeach()
 else()
   message(WARNING "Python 3 not found: end-to-end tool tests are disabled")

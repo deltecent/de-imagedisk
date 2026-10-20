@@ -26,6 +26,10 @@ class Failure(Exception):
     pass
 
 
+class Skip(Exception):
+    pass
+
+
 def check(cond, msg="check failed"):
     if not cond:
         raise Failure(msg)
@@ -341,10 +345,6 @@ def imdu_merge_identity():
     make_imd()
     out, _ = run("imdu", "x.imd", "x.imd", "y.imd", "/Y")
     check(read("x.imd") == read("y.imd"))
-    for real in REAL_IMAGES:
-        if os.path.exists(real):
-            run("imdu", real, real, "r.imd", "/Y")
-            check(read(real) == read("r.imd"), real)
 
 
 def interleave_image():
@@ -604,7 +604,61 @@ def td02imd_errors():
     check("Use:    td02imd" in out, out)
 
 
+@test
+def imdu_empty_track_kept():
+    write("e.imd", build_imd(b"E\r\n", [(5, 0, 0, 2, [1], [(2, 7)]), (5, 1, 0, 2, [], []),
+                                         (5, 2, 0, 2, [1], [(2, 8)])]))
+    out, _ = run("imdu", "e.imd", "o.imd", "/C", "/Y")
+    check(" 1/0 No data" in out, out)
+    check(read("o.imd") == read("e.imd"))
+
+
+@test
+def no_tool_blocks():
+    """With stdin not a terminal, no tool waits for input."""
+    make_imd()
+    write("exists.imd", b"x")
+    for args in [("imdu", "x.imd", "exists.imd", "/C"), ("imdu", "x.imd", "exists", "/B")]:
+        write("exists.bin", b"x")
+        _, err = run(*args, expect=1)
+        check("already exists - use /Y to overwrite" in err, err)
+    write("t.td0", td0gen.build_td0([(0, 0, [sec(0, 0, 1, bytes(512))])])[0])
+    write("t.imd", b"x")
+    run("td02imd", "t.td0")
+    run("bin2imd", "x.bin", "exists.imd", "N=1", "DM=5", "SS=512", "SM=1")
+    for tool in ("imdu", "bin2imd", "td02imd"):
+        run(tool, expect=1)
+
+
 REAL_IMAGES = [os.path.expanduser("~/Downloads/CDOSMBD.IMD"), os.path.expanduser("~/Downloads/CPM80-22.IMD")]
+
+
+@test
+def real_images():
+    """Checks against real images when they are available (set IMD_REAL_IMAGES to a
+    colon-separated list to use others)."""
+    images = os.environ.get("IMD_REAL_IMAGES")
+    images = images.split(":") if images else REAL_IMAGES
+    images = [i for i in images if os.path.exists(i)]
+    if not images:
+        raise Skip("no real images found")
+    import json
+    for real in images:
+        comment, tracks = parse_imd(read(real))
+        out, _ = run("imdu", real)
+        sectors = sum(len(t["sectors"]) for t in tracks)
+        check(f"{len(tracks)} tracks(" in out and f"), {sectors} sectors" in out, out)
+        out, _ = run("imdu", real, "/D")
+        check(out.count(" kbps ") >= 1, out)
+        run("imdu", real, real, "same.imd", "/Y")
+        check(read("same.imd") == read(real), f"{real}: merge with itself changed the image")
+        run("imdu", real, "e.imd", "/E", "/Y")
+        run("imdu", "e.imd", "c.imd", "/C", "/Y")
+        check(read("c.imd") == read(real), f"{real}: /E then /C changed the image")
+        run("imdu", real, "b", "/B", "/Y")
+        check(len(read("b.bin")) == sum((128 << t["size"]) * len(t["sectors"]) for t in tracks))
+        doc = json.loads(run("imdu", real, "--json")[0])
+        check(doc["totals"]["sectors"] == sectors and len(doc["tracks"]) == len(tracks))
 
 
 def main():
@@ -618,6 +672,9 @@ def main():
         except Failure as e:
             print(f"FAIL {name}: {e}")
             return 1
+        except Skip as e:
+            print(f"skip {name}: {e}")
+            return 77
     print(f"ok {name}")
     return 0
 
