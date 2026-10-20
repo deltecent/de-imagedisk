@@ -26,7 +26,7 @@ jobs:
             cmake_args: "'-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read version
         id: version
@@ -67,9 +67,14 @@ jobs:
           mkdir -p "dist/$name"
           cp build/imdu build/bin2imd build/td02imd README.md "dist/$name/"
           strip "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
+          # strip drops the linker's ad-hoc signature, which arm64 macOS requires
+          if [ "$RUNNER_OS" = macOS ]; then
+            codesign --force --sign - "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
+            codesign --verify --strict "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
+          fi
           tar -C dist -czf "dist/$name.tar.gz" "$name"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}
           path: dist/*.tar.gz
@@ -82,7 +87,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
