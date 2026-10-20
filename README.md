@@ -29,9 +29,10 @@ Requires CMake 3.16+ and a C++17 compiler (Apple clang or GCC).
 so they run on any distribution.
 
 Prebuilt binaries are on the GitHub releases page: Linux x86_64 and arm64 (static), and a
-macOS universal build (arm64 + x86_64, macOS 11 or later). The macOS binaries aren't
-notarized, so after downloading with a browser, clear the quarantine flag with
-`xattr -d com.apple.quarantine imdu bin2imd td02imd`.
+macOS universal build (arm64 + x86_64, macOS 11 or later). The macOS binaries are signed
+with a Developer ID and notarized by Apple, so Gatekeeper lets them run after a browser
+download. Bare executables can't carry a stapled ticket, so the first run needs network
+access for Gatekeeper's online check.
 
 ### Making a release
 
@@ -41,6 +42,20 @@ notarized, so after downloading with a browser, clear the quarantine flag with
 3. The Release workflow builds and tests each platform, then creates a draft GitHub release
    with the archives and `SHA256SUMS`. A tag that doesn't match the CMake version fails the
    build. Review the draft and publish it.
+
+The macOS signing and notarization in `.github/scripts/macos-sign.sh` reads these
+repository secrets:
+
+| Secret | Contents |
+|---|---|
+| `MACOS_CERTIFICATE_P12` | base64 of the Developer ID Application certificate and key, exported as `.p12` |
+| `MACOS_CERTIFICATE_PASSWORD` | the `.p12` export password |
+| `APPLE_API_KEY_P8` | an App Store Connect API key (the text of `AuthKey_XXXX.p8`) |
+| `APPLE_API_KEY_ID` | that key's ID |
+| `APPLE_API_ISSUER_ID` | the issuer ID shown on the App Store Connect keys page |
+
+A tagged release fails without them. A manual run falls back to an ad-hoc signature and
+prints a warning.
 
 The workflow can also be run by hand (Actions → Release → Run workflow). This builds the
 archives as workflow artifacts without making a release.

@@ -62,15 +62,20 @@ jobs:
           done
 
       - name: Package
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
         run: |
           name=de-imagedisk-${{ steps.version.outputs.version }}-${{ matrix.platform }}
           mkdir -p "dist/$name"
           cp build/imdu build/bin2imd build/td02imd README.md "dist/$name/"
           strip "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
-          # strip drops the linker's ad-hoc signature, which arm64 macOS requires
+          # strip drops the linker's signature, so the macOS tools are signed here
           if [ "$RUNNER_OS" = macOS ]; then
-            codesign --force --sign - "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
-            codesign --verify --strict "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
+            sh .github/scripts/macos-sign.sh "dist/$name"
           fi
           tar -C dist -czf "dist/$name.tar.gz" "$name"
 
