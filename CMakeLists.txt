@@ -11,6 +11,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 option(IMD_WERROR "Treat compiler warnings as errors" OFF)
+option(IMD_STATIC "Link the tools statically (Linux release builds)" OFF)
 
 function(imd_warnings target)
   target_compile_options(${target} PRIVATE -Wall -Wextra)
@@ -31,6 +32,9 @@ foreach(tool imdu bin2imd td02imd)
   add_executable(${tool} src/${tool}/main.cpp)
   target_link_libraries(${tool} PRIVATE imdcore)
   imd_warnings(${tool})
+  if(IMD_STATIC)
+    target_link_options(${tool} PRIVATE -static)
+  endif()
 endforeach()
 
 install(TARGETS imdu bin2imd td02imd RUNTIME DESTINATION bin)

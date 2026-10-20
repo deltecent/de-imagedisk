@@ -25,6 +25,26 @@ Requires CMake 3.16+ and a C++17 compiler (Apple clang or GCC).
 
 `-DIMD_WERROR=ON` turns compiler warnings into errors.
 
+`-DIMD_STATIC=ON` links the tools statically. The Linux release binaries are built this way
+so they run on any distribution.
+
+Prebuilt binaries are on the GitHub releases page: Linux x86_64 and arm64 (static), and a
+macOS universal build (arm64 + x86_64, macOS 11 or later). The macOS binaries aren't
+notarized, so after downloading with a browser, clear the quarantine flag with
+`xattr -d com.apple.quarantine imdu bin2imd td02imd`.
+
+### Making a release
+
+1. Set the version in `project(de-imagedisk VERSION ...)` in `CMakeLists.txt`. The tools
+   print this version, and bin2imd writes it into the `IMD x.yy:` header line.
+2. Commit, then tag and push: `git tag v1.21 && git push origin master v1.21`.
+3. The Release workflow builds and tests each platform, then creates a draft GitHub release
+   with the archives and `SHA256SUMS`. A tag that doesn't match the CMake version fails the
+   build. Review the draft and publish it.
+
+The workflow can also be run by hand (Actions → Release → Run workflow). This builds the
+archives as workflow artifacts without making a release.
+
 The `real_images` test also checks `~/Downloads/CDOSMBD.IMD` and `~/Downloads/CPM80-22.IMD`
 if they exist. Set `IMD_REAL_IMAGES=a.imd:b.imd` to use other images. With no images, the
 test is reported as skipped.

@@ -1,0 +1,98 @@
+name: Release
+
+# Pushing a tag vX.YY builds the release binaries and attaches them to a draft
+# GitHub release. Running the workflow by hand builds the same archives as
+# workflow artifacts without creating a release.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x86_64
+            os: ubuntu-22.04
+            cmake_args: -DIMD_STATIC=ON
+          - platform: linux-arm64
+            os: ubuntu-22.04-arm
+            cmake_args: -DIMD_STATIC=ON
+          - platform: macos-universal
+            os: macos-14
+            cmake_args: "'-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(sed -n 's/^project(de-imagedisk VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match project version $version in CMakeLists.txt"
+            exit 1
+          fi
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIMD_WERROR=ON ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Check binaries
+        run: |
+          for tool in imdu bin2imd td02imd; do
+            file "build/$tool"
+            case "${{ matrix.platform }}" in
+              linux-*)
+                if ldd "build/$tool" >/dev/null 2>&1; then
+                  echo "::error::$tool is dynamically linked"
+                  exit 1
+                fi ;;
+              macos-*) lipo "build/$tool" -verify_arch arm64 x86_64 ;;
+            esac
+          done
+
+      - name: Package
+        run: |
+          name=de-imagedisk-${{ steps.version.outputs.version }}-${{ matrix.platform }}
+          mkdir -p "dist/$name"
+          cp build/imdu build/bin2imd build/td02imd README.md "dist/$name/"
+          strip "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
+          tar -C dist -czf "dist/$name.tar.gz" "$name"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum *.tar.gz > SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" *.tar.gz SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --draft --generate-notes \
+            --title "de-imagedisk ${GITHUB_REF_NAME#v}"

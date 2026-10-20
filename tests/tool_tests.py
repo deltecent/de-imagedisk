@@ -14,6 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import td0gen  # noqa: E402
 
 BIN = None
+VERSION = os.environ.get("IMD_VERSION", "1.20").encode()
 TESTS = {}
 
 
@@ -141,7 +142,7 @@ def bin2imd_144m():
     out, _ = run("bin2imd", "x.bin", "x.imd", "N=80", "/2", "DM=3", "SS=512", "SM=1-18",
                  "C=Test~comment")
     comment, tracks = parse_imd(read("x.imd"))
-    check(comment.startswith(b"IMD 1.20: "), comment)
+    check(comment.startswith(b"IMD " + VERSION + b": "), comment)
     check(comment.endswith(b"\r\nTest comment\r\n"), comment)
     check(len(tracks) == 160)
     check([(t["cyl"], t["head"]) for t in tracks[:3]] == [(0, 0), (0, 1), (1, 0)])
@@ -272,7 +273,7 @@ def imdu_comments():
     out, _ = run("imdu", "x.imd", "EC=cmt")
     check("\nSample\n" in out, out)
     cmt = read("cmt.txt")
-    check(cmt.startswith(b"IMD 1.20: ") and cmt.endswith(b"\r\nSample\r\n"), cmt)
+    check(cmt.startswith(b"IMD " + VERSION + b": ") and cmt.endswith(b"\r\nSample\r\n"), cmt)
     write("new.txt", b"Replaced\r\n")
     run("imdu", "x.imd", "r.imd", "RC=new", "/Y")
     check(parse_imd(read("r.imd"))[0] == b"Replaced\r\n")
