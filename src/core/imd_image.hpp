@@ -60,8 +60,8 @@ struct Image {
 // Malformed image. `cyl`/`head` are the physical track being read, or -1 if none yet.
 class FormatError : public std::runtime_error {
 public:
-    FormatError(const std::string& msg, int cyl = -1, int head = -1)
-        : std::runtime_error(msg), cyl(cyl), head(head) {}
+    FormatError(const std::string& msg, int c = -1, int h = -1)
+        : std::runtime_error(msg), cyl(c), head(h) {}
     int cyl, head;
 };
 
