@@ -183,6 +183,82 @@ def bin2imd_errors():
     check("Use: bin2imd" in out)
 
 
+# ---------------------------------------------------------------- imdu
+
+def make_imd(name="x", seed=1, extra=()):
+    data = make_bin(name + ".bin", 80 * 2 * 18 * 512, seed)
+    run("bin2imd", name + ".bin", name + ".imd", "N=80", "/2", "DM=3", "SS=512", "SM=1-18",
+        "C=Sample", *extra)
+    return data
+
+
+@test
+def imdu_binary_round_trip():
+    data = make_imd()
+    out, _ = run("imdu", "x.imd", "out", "/B", "/Y")
+    check(read("out.bin") == data)
+    check("80 kbps" not in out)
+    check(" 0/0 500 kbps DD  18x512" in out, out)
+    check("160 tracks(80/80), 2880 sectors (3 Compressed)" in out, out)
+
+
+@test
+def imdu_identity_and_compression():
+    make_imd()
+    # bin2imd already compressed the all-same sectors, so /C changes nothing.
+    run("imdu", "x.imd", "y.imd", "/C", "/Y")
+    check(read("x.imd") == read("y.imd"))
+    run("imdu", "x.imd", "e.imd", "/E", "/Y")
+    _, tracks = parse_imd(read("e.imd"))
+    check(all(s[0] == 1 for t in tracks for s in t["sectors"]))
+    check(len(read("e.imd")) > len(read("x.imd")))
+    run("imdu", "e.imd", "c.imd", "/C", "/Y")
+    check(read("c.imd") == read("x.imd"))
+
+
+@test
+def imdu_overwrite_never_blocks():
+    make_imd()
+    write("y.imd", b"old")
+    _, err = run("imdu", "x.imd", "y.imd", "/C", expect=1)
+    check("already exists" in err, err)
+    check(read("y.imd") == b"old")
+    run("imdu", "x.imd", "y.imd", "/C", "/Y")
+    check(read("y.imd") != b"old")
+    _, err = run("imdu", "x.imd", "/C", expect=1)
+    check("No output file." in err, err)
+
+
+@test
+def imdu_comments():
+    make_imd()
+    out, _ = run("imdu", "x.imd", "EC=cmt")
+    check("\nSample\n" in out, out)
+    cmt = read("cmt.txt")
+    check(cmt.startswith(b"IMD 1.20: ") and cmt.endswith(b"\r\nSample\r\n"), cmt)
+    write("new.txt", b"Replaced\r\n")
+    run("imdu", "x.imd", "r.imd", "RC=new", "/Y")
+    check(parse_imd(read("r.imd"))[0] == b"Replaced\r\n")
+    run("imdu", "x.imd", "a.imd", "AC=new.txt", "/Y")
+    check(parse_imd(read("a.imd"))[0] == cmt + b"Replaced\r\n")
+
+
+@test
+def imdu_detail():
+    make_imd()
+    out, _ = run("imdu", "x.imd", "/D")
+    lines = out.splitlines()
+    i = lines.index(" 0/0 500 kbps DD  18x512")
+    check(lines[i + 1].startswith("      1   2   3   "), lines[i + 1])
+    check(lines[i + 2].startswith("      De5 D   D   D   "), lines[i + 2])
+    run("imdu", "x.imd", expect=0)
+    _, err = run("imdu", "missing.imd", expect=1)
+    check("missing.imd" in err, err)
+    write("bad.imd", b"comment only")
+    _, err = run("imdu", "bad.imd", expect=1)
+    check("EOF in comment" in err, err)
+
+
 def main():
     global BIN
     BIN = os.path.abspath(sys.argv[1])
