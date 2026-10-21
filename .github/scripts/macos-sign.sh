@@ -69,7 +69,7 @@ printf '%s\n' "$APPLE_API_KEY_P8" > "$work/AuthKey.p8"
 ditto -c -k --keepParent "$dir" "$work/notarize.zip"
 xcrun notarytool submit "$work/notarize.zip" \
     --key "$work/AuthKey.p8" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER_ID" \
-    --wait --timeout 30m --output-format json > "$work/notary.json"
+    --wait --timeout 60m --output-format json > "$work/notary.json"
 cat "$work/notary.json"; echo
 status=$(plutil -extract status raw "$work/notary.json")
 if [ "$status" != Accepted ]; then
