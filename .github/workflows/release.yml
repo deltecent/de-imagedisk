@@ -71,7 +71,7 @@ jobs:
         run: |
           name=de-imagedisk-${{ steps.version.outputs.version }}-${{ matrix.platform }}
           mkdir -p "dist/$name"
-          cp build/imdu build/bin2imd build/td02imd README.md "dist/$name/"
+          cp build/imdu build/bin2imd build/td02imd README.md LICENSE "dist/$name/"
           strip "dist/$name/imdu" "dist/$name/bin2imd" "dist/$name/td02imd"
           # strip drops the linker's signature, so the macOS tools are signed here
           if [ "$RUNNER_OS" = macOS ]; then

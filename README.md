@@ -211,3 +211,7 @@ Most of these fix apparent bugs in 1.20:
     src/td02imd/   td02imd
     tests/         unit tests, end-to-end tests (tool_tests.py) and a synthetic TD0
                    generator with an LZHUF encoder (td0gen.py)
+
+## License
+
+MIT. See [LICENSE](LICENSE).
