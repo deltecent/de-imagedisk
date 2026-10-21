@@ -73,6 +73,9 @@ extension, the default one is added. For input files, the uppercase extension is
 first (`disk.IMD`), then the lowercase one (`disk.imd`). Output files always get a
 lowercase extension.
 
+The tables below are a quick reference. [imdu.md](imdu.md), [bin2imd.md](bin2imd.md) and
+[td02imd.md](td02imd.md) describe each tool in full, with examples.
+
 ### imdu
 
     imdu image [[merge-image] [output-image]] [options]
@@ -127,8 +130,9 @@ unavailable, lowercase if deleted, followed by the fill byte if the sector is co
 `[s]` is an optional side digit. With no digit the setting applies to both sides. A `1`
 also turns on two-sided output. Numbers can be decimal, `$hex`, `@octal` or `%binary`. In
 a map, `a-b` adds an ascending or descending range, and `n.k` makes the value `n` appear
-`k` times in a row. For example, `SM=1-9` gives 1 to 9, and `SM=1,3,5,7,9,2,4,6,8` gives a
-2:1 interleave.
+`k` times in a row. For example, `SM=1-9` gives 1 to 9. The input fills the sectors in map
+order, so for a `.DSK` stored in sector order use a sequential map, and set an interleave
+afterwards with `imdu IL=`.
 
 The option file holds lines of the form `<cylinder> options...`, and lines starting with
 `;` are comments. A line takes effect when output reaches its cylinder. `C=` and `N=` are
@@ -136,6 +140,9 @@ allowed only on the cylinder 0 line. Example, with FM on cylinder 0 and MFM from
 
     0 DM=0 SS=128 SM=1-26
     1 DM=3 SS=256 SM=1-26
+
+[bin2imd.md](bin2imd.md) has complete examples for Tarbell single- and double-density
+disks.
 
 ### td02imd
 

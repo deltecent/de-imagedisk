@@ -296,7 +296,8 @@ int main(int argc, char* argv[])
                 out.push_back(ch);
             }
         }
-        if (verbose)
+        // End the header line, or the comment, which is shown even with /Q.
+        if (verbose || h.hasComment())
             std::putchar('\n');
         append(out, "\r\n");
         out.push_back(imd::kCommentEnd);
