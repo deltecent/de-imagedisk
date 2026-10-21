@@ -203,6 +203,11 @@ Most of these fix apparent bugs in 1.20:
 16. **TD0 RLE**: a repeated pattern is `1<<n` bytes long, as in 1.20's code. TD0NOTES says
     `n*2`. The two agree for n ≤ 2, which is all real images use.
 
+## File formats
+
+[IMD.md](IMD.md) and [TD0.md](TD0.md) describe the two image formats byte by byte, as these
+tools read and write them.
+
 ## Layout
 
     src/core/      imdcore library: CLI helpers, IMD model/reader/writer, TD0 reader + LZHUF
