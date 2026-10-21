@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import td0gen  # noqa: E402
 
 BIN = None
-VERSION = os.environ.get("IMD_VERSION", "1.20").encode()
+VERSION = os.environ.get("IMD_VERSION", "1.21").encode()
 TESTS = {}
 
 

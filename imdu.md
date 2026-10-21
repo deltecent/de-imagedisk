@@ -38,8 +38,8 @@ and a total:
 
 ```
 $ imdu tarbdd.imd
-IMageDisk Utility 1.20 / Oct 20 2026
-IMD 1.20: 20/10/2026 20:45:49
+IMageDisk Utility 1.21 / Oct 20 2026
+IMD 1.21: 20/10/2026 20:45:49
 Tarbell double density CP/M 2.2
  0/0 500 kbps SD  26x128
  1/0 500 kbps DD  51x128
@@ -188,7 +188,7 @@ scripts and tools:
 ```json
 {
   "file": "tarbdd.imd",
-  "comment": "IMD 1.20: 20/10/2026 20:45:49\r\nTarbell double density CP/M 2.2\r\n",
+  "comment": "IMD 1.21: 20/10/2026 20:45:49\r\nTarbell double density CP/M 2.2\r\n",
   "tracks": [
     {"cylinder": 0, "head": 0, "mode": 0, "rate_kbps": 500, "encoding": "FM", "sector_size": 128,
      "cylinder_map": false, "head_map": false,

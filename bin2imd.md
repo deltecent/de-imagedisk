@@ -91,7 +91,7 @@ values as the sector map.
 
 ### Comments
 
-Every image starts with the line `IMD 1.20: dd/mm/yyyy hh:mm:ss`, the time it was made.
+Every image starts with the line `IMD 1.21: dd/mm/yyyy hh:mm:ss`: the bin2imd version and the time the image was made.
 Each `C=text` adds one line after it. A shell needs quotes around text with spaces, or use
 `~` for each space: `C=CP/M~2.2~system~disk`. `C=@notes.txt` adds the file's bytes as they
 are, so the file should use CR LF line endings. The comment can be up to 32,767 bytes.
@@ -136,8 +136,8 @@ bin2imd TARBSD.DSK tarbsd.imd N=77 DM=0 SS=128 SM=1-26 C=Tarbell~single~density~
 
 ```
 $ imdu tarbsd.imd
-IMageDisk Utility 1.20 / Oct 20 2026
-IMD 1.20: 20/10/2026 20:45:49
+IMageDisk Utility 1.21 / Oct 20 2026
+IMD 1.21: 20/10/2026 20:45:49
 Tarbell single density CP/M 2.2
  0/0 500 kbps SD  26x128
 77 tracks(77/0), 2002 sectors (90 Compressed)
@@ -162,8 +162,8 @@ bin2imd TARBDD.DSK tarbdd.imd tarbdd.b2i C=Tarbell~double~density~CP/M~2.2
 
 ```
 $ imdu tarbdd.imd
-IMageDisk Utility 1.20 / Oct 20 2026
-IMD 1.20: 20/10/2026 20:45:49
+IMageDisk Utility 1.21 / Oct 20 2026
+IMD 1.21: 20/10/2026 20:45:49
 Tarbell double density CP/M 2.2
  0/0 500 kbps SD  26x128
  1/0 500 kbps DD  51x128

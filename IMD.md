@@ -30,7 +30,7 @@ with CR LF.
 By convention the first line identifies the program and the time the image was made:
 
 ```
-IMD 1.20: 20/10/2026 14:03:07
+IMD 1.21: 20/10/2026 14:03:07
 ```
 
 The date is day/month/year. Programs that write the line differently still produce a
